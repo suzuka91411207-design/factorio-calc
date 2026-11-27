@@ -244,9 +244,11 @@ const OIL = new Set(['heavy-oil','light-oil','petroleum-gas']);
 
 /* ===================== 状態 ===================== */
 const KEY='factorio-calc-v1';
-function defCfg(m){return {m,s:[],bn:0,b:['none','none']};}
+const SET_VER=2;
+// 既定：本体は生産力3で全枠、ビーコン8基に速度3×2
+function defCfg(m){return {m,s:['p3','p3','p3','p3'],bn:8,b:['s3','s3']};}
 function defaultState(){return {
-  tab:'calc', unit:'min', intCraft:true,
+  ver:SET_VER, tab:'calc', unit:'min', intCraft:true,
   targets:[{item:'electronic-circuit',amt:60}],
   rev:{item:'electronic-circuit',mats:[{item:'iron-plate',amt:1000},{item:'copper-plate',amt:1000}]},
   def:{assembler:defCfg('asm3'),furnace:defCfg('efurn'),chem:defCfg('chem'),refinery:defCfg('refi'),centrifuge:defCfg('cent'),silo:defCfg('silo')},
@@ -254,7 +256,7 @@ function defaultState(){return {
   choice:{solid:'solid-fuel-from-light-oil',u235:'kovarex-enrichment-process'}
 };}
 let S = defaultState();
-function applySaved(j){ if(j&&j.def){ S=Object.assign(defaultState(),j); S.def=Object.assign(defaultState().def,j.def); S.open={}; S.drill=[]; return true;} return false; }
+function applySaved(j){ if(j&&j.def){ if((j.ver||1)<SET_VER){ j.def=defaultState().def; j.ov={}; j.ver=SET_VER; } S=Object.assign(defaultState(),j); S.def=Object.assign(defaultState().def,j.def); S.open={}; S.drill=[]; return true;} return false; }
 try{applySaved(JSON.parse(localStorage.getItem(KEY)));}catch(e){}
 function snapshot(){const c=Object.assign({},S); delete c.open; delete c.drill; return JSON.stringify(c);}
 function save(){const s=snapshot(); try{localStorage.setItem(KEY,s);}catch(e){} cloudSave(s);}
@@ -463,7 +465,7 @@ function rowCard(rid,res,rate,toDisp,unitLbl){
     if(rate){const mc=n*r.t/(e.M.speed*e.sMul); h+=` ・ 消費電力≈${fmt(Math.ceil(mc-1e-9)*e.M.kw*(e.M.burner?1:e.eMul)/1000)}MW${e.M.burner?'（燃料）':''}`;}
     else { h+=` ・ 1台なら ${dur(n*r.t/(e.M.speed*e.sMul))}`; }
     h+='</div>';
-    if(e.blocked) h+=`<div class="sub warn">⚠ このレシピは生産力モジュール不可（無視して計算）</div>`;
+    if(e.blocked) h+=`<div class="sub">※ 生産力モジュール不可のレシピのため、生産力モジュール分は除外して計算</div>`;
     if(e.fixed) h+=`<div class="sub warn">⚠ 流体を使うため組立機1は不可。${e.M.n}で計算</div>`;
     h+=`<div style="margin-top:6px"><button class="btn sm" data-open="${rid}">${S.open[rid]?'▲ 閉じる':'⚙ モジュール・ビーコン'}</button></div>`;
     if(S.open[rid]) h+=editor('r:'+rid);
