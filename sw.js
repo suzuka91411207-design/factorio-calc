@@ -1,5 +1,5 @@
 // 保存済みの版をすぐ返し、裏で最新版を取りに行く（電波が弱くても待たされない）
-const C='fcalc-v12';const F=['./','index.html','manifest.webmanifest','icon-180.png','icon-512.png'];
+const C='fcalc-v13';const F=['./','index.html','manifest.webmanifest','icon-180.png','icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(F)));self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',e=>{

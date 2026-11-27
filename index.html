@@ -76,7 +76,7 @@ input[type=number]{width:100px}
 </head>
 <body>
 <header>
-  <h1>Factorio 計算機 <small>2.0 バニラ（Space Ageなし）</small></h1>
+  <h1>Factorio 計算機 <small>2.1 バニラ（Space Ageなし）</small></h1>
   <nav>
     <button data-tab="calc">必要量・台数</button>
     <button data-tab="rev">逆算</button>
@@ -91,7 +91,7 @@ input[type=number]{width:100px}
 </main>
 <script>
 "use strict";
-/* ===================== データ（Factorio 2.0 base） ===================== */
+/* ===================== データ（Factorio 2.1.25 base） ===================== */
 // [id, 名前, グループ, 流体?]
 const ITEMS = [
  ['iron-ore','鉄鉱石','raw'],['copper-ore','銅鉱石','raw'],['stone','石','raw'],['coal','石炭','raw'],
@@ -174,7 +174,7 @@ rc('production-science-pack',21,'craft',1,{'electric-furnace':1,'productivity-mo
 rc('utility-science-pack',21,'craft',1,{'low-density-structure':3,'processing-unit':2,'flying-robot-frame':1},{'utility-science-pack':3});
 rc('rocket-part',3,'silo',1,{'processing-unit':10,'low-density-structure':10,'rocket-fuel':10},{'rocket-part':1});
 rc('satellite',5,'craft',0,{'low-density-structure':100,'solar-panel':100,'accumulator':100,'radar':5,'processing-unit':100,'rocket-fuel':50},{'satellite':1});
-rc('space-science-pack',0,'launch',0,{'rocket-part':50,'satellite':1},{'space-science-pack':1000},'ロケット打ち上げ（衛星搭載）');
+rc('space-science-pack',0,'launch',0,{'rocket-part':100,'satellite':1},{'space-science-pack':1000},'ロケット打ち上げ（衛星搭載）');
 // モジュール
 const MODREC=[['speed-module','speed'],['productivity-module','productivity'],['efficiency-module','efficiency']];
 MODREC.forEach(([b])=>{
@@ -222,7 +222,7 @@ rc('kovarex-enrichment-process',60,'cent',1,{'uranium-238':3},{'uranium-235':1},
 rc('uranium-fuel-cell',10,'craft',1,{'iron-plate':10,'uranium-235':1,'uranium-238':19},{'uranium-fuel-cell':10});
 rc('nuclear-fuel',90,'cent',1,{'uranium-235':1,'rocket-fuel':1},{'nuclear-fuel':1});
 
-// 機械（2.0）
+// 機械（2.1）
 const MACH = {
   asm1:{n:'組立機1',speed:0.5,slots:0,kw:75},
   asm2:{n:'組立機2',speed:0.75,slots:2,kw:150},
@@ -244,7 +244,7 @@ const MG = {
   silo:{n:'ロケットサイロ',m:['silo'],cls:'silo'},
 };
 const CAT2G = {craft:'assembler',adv:'assembler',fluid:'assembler',smelt:'furnace',chem:'chem',oil:'refinery',cent:'centrifuge',silo:'silo'};
-// モジュール（2.0）
+// モジュール（2.1）
 const MODS = {
   none:{n:'－'},
   s1:{n:'生産速度1',speed:.2,energy:.5}, s2:{n:'生産速度2',speed:.3,energy:.6}, s3:{n:'生産速度3',speed:.5,energy:.7},
@@ -568,7 +568,7 @@ function rowCard(rid,res,rate,toDisp,unitLbl){
     h+=`<div style="margin-top:6px"><button class="btn sm" data-open="${rid}">${S.open[rid]?'▲ 閉じる':'⚙ モジュール・ビーコン'}</button></div>`;
     if(S.open[rid]) h+=editor('r:'+rid);
   } else if(r.cat==='launch'){
-    h+=`<div class="sub">1回の打ち上げ = ロケット部品50個 + 衛星1個 → スペースサイエンスパック1000個</div>`;
+    h+=`<div class="sub">1回の打ち上げ = ロケット部品100個 + 衛星1個 → スペースサイエンスパック1000個</div>`;
   }
   return h+'</div>';
 }
@@ -706,13 +706,13 @@ function renderSettings(){
    ※ Factorio Wikiの実測表（青ベルト・ベルトに対して垂直に置いた場合）の値です。手持ち数が表にない場合は間を補間しています。ベルトの向きや混み具合で多少変わります。流体はパイプで供給する前提で除外しています。</div></div>
   <div class="box"><h2>個別設定</h2><div class="note">個別設定中の工程: ${Object.keys(S.ov).length? Object.keys(S.ov).map(r=>esc(rname(r))).join('、'):'なし'}</div>
    <div class="trow" style="margin-top:8px"><button class="btn sm" id="clrov">個別設定をすべて解除</button><button class="btn sm" id="resetall">全設定を初期化</button></div></div>
-  <div class="box"><h2>計算ルール（2.0）</h2><div class="note">
+  <div class="box"><h2>計算ルール（2.1）</h2><div class="note">
    ・機械台数 = クラフト回数/秒 × レシピ時間 ÷ (機械の速度 × (1+速度ボーナス))<br>
    ・ビーコン: 1基あたりモジュール効果×1.5、n基で各 1/√n → 合計 1.5×√n 倍<br>
    ・速度ボーナスは最低 −80%、生産力は最大 +300%、電力は最低 −80%<br>
    ・生産力モジュールは中間製品（サイエンスパック等を含む）のみ。ビーコンには不可<br>
    ・モジュール: 速度 +20/30/50%（電力+50/60/70%）、生産力 +4/6/10%（速度−5/10/15%、電力+40/60/80%）、効率 電力−30/40/50%<br>
-   ・ロケット1発 = 部品50個（2.0）。品質モジュールはSpace Age専用のため対象外
+   ・ロケット1発 = 部品100個（Space Ageなしの場合）。品質モジュールはSpace Age専用のため対象外
   </div></div>`;
   document.getElementById('form').innerHTML=h;
 }
