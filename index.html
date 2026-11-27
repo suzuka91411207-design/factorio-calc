@@ -240,11 +240,16 @@ const MODS = {
   e1:{n:'効率1',energy:-.3}, e2:{n:'効率2',energy:-.4}, e3:{n:'効率3',energy:-.5},
 };
 const BEACON_EFF = 1.5, BEACON_KW = 480, BEACON_SLOTS = 2;
-// 搬入（青ベルト → 機械）。インサータ1往復の時間（Wiki: ロング48tick、バルク24tick）
-// ベルトから1個ずつ拾う時間は、青ベルト・両レーンの実測値から逆算した約0.064秒/個
-const BLUE_BELT=45, T_PICK=0.064;
-const INS={bulk:{n:'バルクインサータ',arm:0.4,maxHand:12},long:{n:'ロングインサータ',arm:0.8,maxHand:3}};
-function insRate(type){ const hand=Math.max(1,Math.min(INS[type].maxHand, +(S.hand&&S.hand[type])||INS[type].maxHand)); return 1/(T_PICK + INS[type].arm/hand); }
+// 搬入（青ベルト → 機械）。Factorio Wiki「Inserters」Belt to chest (perpendicular) の
+// 超高速搬送ベルト（青）・ベルト速度で流れる場合の実測値（1.1の実験データ）。間の手持ち数は直線補間
+const BLUE_BELT=45;
+const INS={bulk:{n:'バルクインサータ',maxHand:12,pts:[[2,5.00],[4,8.00],[12,15.00]]},
+           long:{n:'ロングインサータ',maxHand:3,pts:[[1,1.25],[2,2.40],[3,3.46]]}};
+function insRate(type){
+  const T=INS[type], hand=Math.max(T.pts[0][0],Math.min(T.maxHand, +(S.hand&&S.hand[type])||T.maxHand)), P=T.pts;
+  for(let i=0;i<P.length-1;i++){ if(hand<=P[i+1][0]){ const [x0,y0]=P[i],[x1,y1]=P[i+1]; return y0+(y1-y0)*(hand-x0)/(x1-x0);} }
+  return P[P.length-1][1];
+}
 const OIL = new Set(['heavy-oil','light-oil','petroleum-gas']);
 
 /* ===================== 状態 ===================== */
@@ -632,7 +637,7 @@ function renderSettings(){
    <div class="trow"><label style="min-width:150px">ロングの手持ち数</label><select id="hl">${[1,2,3].map(n=>`<option value="${n}"${n==S.hand.long?' selected':''}>${n}個</option>`).join('')}</select></div>
    <div class="note">インサータ容量の研究で増えます（すべて研究済み：バルク12個・ロング3個）。<br>
    青ベルトからの搬入速度の目安（1本あたり）: バルク ${fmt(insRate('bulk'))}個/秒 ・ ロング ${fmt(insRate('long'))}個/秒<br>
-   ※ Wikiの実測値から求めた推定値で、ベルトの混み具合や向きによって±15%ほど変わります。流体はパイプで供給する前提で除外しています。</div></div>
+   ※ Factorio Wikiの実測表（青ベルト・ベルトに対して垂直に置いた場合）の値です。手持ち数が表にない場合は間を補間しています。ベルトの向きや混み具合で多少変わります。流体はパイプで供給する前提で除外しています。</div></div>
   <div class="box"><h2>個別設定</h2><div class="note">個別設定中の工程: ${Object.keys(S.ov).length? Object.keys(S.ov).map(r=>esc(rname(r))).join('、'):'なし'}</div>
    <div class="trow" style="margin-top:8px"><button class="btn sm" id="clrov">個別設定をすべて解除</button><button class="btn sm" id="resetall">全設定を初期化</button></div></div>
   <div class="box"><h2>計算ルール（2.0）</h2><div class="note">
