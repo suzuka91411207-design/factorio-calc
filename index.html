@@ -276,9 +276,10 @@ function defaultState(){return {
   choice:{solid:'solid-fuel-from-light-oil',u235:'kovarex-enrichment-process'}
 };}
 let S = defaultState();
-function applySaved(j){ if(j&&j.def){ if((j.ver||1)<SET_VER){ j.def=defaultState().def; j.ov={}; j.ver=SET_VER; } S=Object.assign(defaultState(),j); S.def=Object.assign(defaultState().def,j.def); S.hand=Object.assign({bulk:12,long:3},j.hand||{}); if(j.insOn===undefined) S.insOn=true; S.open={}; S.drill=[]; S.views=[]; if(String(S.tab).startsWith('v:')) S.tab='calc'; return true;} return false; }
+var VSEQ=0;
+function applySaved(j){ if(j&&j.def){ if((j.ver||1)<SET_VER){ j.def=defaultState().def; j.ov={}; j.ver=SET_VER; } S=Object.assign(defaultState(),j); S.def=Object.assign(defaultState().def,j.def); S.hand=Object.assign({bulk:12,long:3},j.hand||{}); if(j.insOn===undefined) S.insOn=true; S.open={}; S.drill=[]; S.views=Array.isArray(j.views)?j.views.filter(v=>v&&I[v.item]):[]; VSEQ=S.views.reduce((m,v)=>Math.max(m,+v.id||0),0); if(String(S.tab).startsWith('v:')&&!S.views.some(v=>'v:'+v.id===S.tab)) S.tab=S.from||'calc'; return true;} return false; }
 try{applySaved(JSON.parse(localStorage.getItem(KEY)));}catch(e){}
-function snapshot(){const c=Object.assign({},S); delete c.open; delete c.drill; delete c.views; if(String(c.tab).startsWith('v:')) c.tab=c.from||'calc'; return JSON.stringify(c);}
+function snapshot(){const c=Object.assign({},S); delete c.open; delete c.drill;  return JSON.stringify(c);}
 function save(){const s=snapshot(); try{localStorage.setItem(KEY,s);}catch(e){} cloudSave(s);}
 // Claude上で開いた場合はアカウントにも保存（端末をまたいで設定を引き継ぐ）
 let CLOUD=null, cloudTimer=null, cloudLast='';
@@ -449,7 +450,7 @@ function editor(key){
 }
 
 /* ===================== 画面 ===================== */
-let VSEQ=0, CUR={rate:false,k:1,unitLbl:'',stop:[]};
+let CUR={rate:false,k:1,unitLbl:'',stop:[]};
 function vLabel(v){ return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(v.rate?v.amt*v.k:v.amt)+(v.rate?v.unitLbl:'個'); }
 function renderTabs(){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===S.tab));
@@ -694,7 +695,7 @@ function init(){
   document.addEventListener('click',ev=>{
     const t=ev.target.closest('button'); if(!t) return;
     if(t.dataset.tab||t.dataset.u||t.id==='tadd'||t.dataset.tdel!==undefined||t.id==='madd'||t.dataset.mdel!==undefined) S.drill=[];
-    if(t.dataset.tab){S.tab=t.dataset.tab; if(!S.tab.startsWith('v:')){S.from=S.tab; save();} render(); window.scrollTo(0,0); return;}
+    if(t.dataset.tab){S.tab=t.dataset.tab; if(!S.tab.startsWith('v:')) S.from=S.tab; save(); render(); window.scrollTo(0,0); return;}
     if(t.dataset.u){S.unit=t.dataset.u; save(); render(); return;}
     if(t.dataset.ru){S.rev.unit=t.dataset.ru; S.drill=[]; save(); render(); return;}
     if(t.dataset.belt!==undefined){S.rev.mats[+t.dataset.belt].amt=(S.rev.unit==='min'?BLUE_BELT*60:BLUE_BELT); S.drill=[]; save(); render(); return;}
@@ -707,12 +708,12 @@ function init(){
       const fromLbl=cur?vLabel(cur):(S.tab==='rev'?'逆算':'必要量・台数');
       const v={id:++VSEQ,item:t.dataset.drill,amt:+t.dataset.amt,rate:CUR.rate,k:CUR.k,unitLbl:CUR.unitLbl,stop:CUR.stop.slice(),from:S.tab,fromLbl};
       if(!String(S.tab).startsWith('v:')) S.from=S.tab;
-      S.views.push(v); S.tab='v:'+v.id; render(); window.scrollTo(0,0); return;}
+      S.views.push(v); S.tab='v:'+v.id; save(); render(); window.scrollTo(0,0); return;}
     if(t.dataset.close){
       const id=+t.dataset.close, i=S.views.findIndex(x=>x.id===id); if(i<0) return;
       const v=S.views[i]; S.views.splice(i,1);
       if(S.tab==='v:'+id){ const back=v.from; S.tab=(String(back).startsWith('v:')&&!S.views.some(x=>'v:'+x.id===back))? (S.from||'calc') : back; if(!S.tab) S.tab='calc'; }
-      render(); return;}
+      save(); render(); return;}
     if(t.dataset.crumb!==undefined){S.drill.length=+t.dataset.crumb; renderOut(); window.scrollTo(0,0); return;}
     if(t.dataset.open){S.open[t.dataset.open]=!S.open[t.dataset.open]; renderOut(); return;}
     if(t.dataset.fill){const key=t.dataset.fill, c=cfgForKey(key); const first=c.s[0]||'none'; c.s=[first,first,first,first]; save(); key.startsWith('g:')?render():renderOut(); return;}
