@@ -797,7 +797,11 @@ function init(){
 let resetArmed=0;
 function confirmReset(){const now=Date.now(); if(now-resetArmed<3000) return true; resetArmed=now; const b=document.getElementById('resetall'); if(b) b.textContent='もう一度押すと初期化'; return false;}
 if(typeof document!=='undefined' && document.getElementById('out')){
-  init();
+  // 保存データが原因で表示に失敗した場合は、開いていたタブを閉じて再表示（共通設定は残す）
+  try{ init(); }catch(err){
+    try{ S.views=[]; S.tab='calc'; save(); render(); }
+    catch(e2){ document.getElementById('out').innerHTML='<div class="box"><div class="note">表示に失敗しました。</div><button class="btn" onclick="try{localStorage.removeItem(KEY)}catch(e){};location.reload()">保存データを初期化して開き直す</button></div>'; }
+  }
   // Claude上：アカウントに保存された設定を読み込む
   (async()=>{ try{
     if(!window.claude||!window.claude.use) return;
