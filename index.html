@@ -54,6 +54,7 @@ input[type=number]{width:100px}
 .vtabs:empty{display:none}
 .vt{flex:none;display:flex;align-items:center;background:#262626;border:1px solid var(--line);border-radius:8px;max-width:220px}
 .vt.on{border-color:var(--acc);background:#3a2f1a}
+.vt.plus .lb{padding:7px 14px;font-size:16px;color:var(--acc)}
 .vt.root .lb{padding-right:10px}
 .vt .lb{background:none;border:none;color:var(--txt);font-size:13px;padding:7px 4px 7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
 .vt.on .lb{color:var(--acc);font-weight:bold}
@@ -452,7 +453,10 @@ function editor(key){
 
 /* ===================== 画面 ===================== */
 let CUR={rate:false,k:1,unitLbl:'',stop:[]};
-function vLabel(v){ return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(v.rate?v.amt*v.k:v.amt)+(v.rate?v.unitLbl:'個'); }
+function vUnit(u){ return {rate:u!=='qty', k:u==='min'?60:1, unitLbl:u==='min'?'/分':(u==='sec'?'/秒':'')}; }
+function vLabel(v){
+  if(v.kind==='calc'){ const U=vUnit(v.unit); return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(+v.amt||0)+(U.rate?U.unitLbl:'個'); }
+  return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(v.rate?v.amt*v.k:v.amt)+(v.rate?v.unitLbl:'個'); }
 function renderTabs(){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===S.tab));
   const root=(S.from==='rev')?'rev':'calc';
@@ -460,20 +464,40 @@ function renderTabs(){
   if(root==='rev') rootLbl='逆算：'+nm(S.rev.item).replace(/（.*?）/g,'');
   else { const ts=S.targets.filter(t=>+t.amt>0), u=S.unit==='qty'?'個':(S.unit==='min'?'/分':'/秒');
     rootLbl=ts.length? nm(ts[0].item).replace(/（.*?）/g,'')+' '+fmt(+ts[0].amt)+u+(ts.length>1?` ほか${ts.length-1}件`:'') : '必要量・台数'; }
-  const rootTab=S.views.length?`<div class="vt root${S.tab===root?' on':''}"><button class="lb" data-tab="${root}">${esc(rootLbl)}</button></div>`:'';
-  document.getElementById('vtabs').innerHTML=rootTab+S.views.map(v=>`<div class="vt${S.tab==='v:'+v.id?' on':''}"><button class="lb" data-tab="v:${v.id}">${esc(vLabel(v))}</button><button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div>`).join('');
+  const rootTab=`<div class="vt root${S.tab===root?' on':''}"><button class="lb" data-tab="${root}">${esc(rootLbl)}</button></div>`;
+  document.getElementById('vtabs').innerHTML=rootTab+S.views.map(v=>`<div class="vt${S.tab==='v:'+v.id?' on':''}"><button class="lb" data-tab="v:${v.id}">${esc(vLabel(v))}</button><button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div>`).join('')+`<div class="vt plus"><button class="lb" id="vnew" aria-label="新しいタブ">＋</button></div>`;
   const on=document.querySelector('.vt.on'); if(on) on.scrollIntoView({inline:'nearest',block:'nearest'});
 }
+function curView(){ return S.views.find(x=>'v:'+x.id===S.tab); }
 function renderView(){
-  const v=S.views.find(x=>'v:'+x.id===S.tab); if(!v){S.tab='calc'; return render();}
+  const v=curView(); if(!v){S.tab='calc'; return render();}
+  if(v.kind==='calc'){
+    document.getElementById('form').innerHTML=`<div class="box"><div class="vhead"><h2 style="margin:0">新しい計算</h2><button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div>
+      <div class="trow" style="margin-top:8px"><select class="item" data-vitem="${v.id}">${itemOptions(v.item,true)}</select>
+      <input type="number" inputmode="decimal" min="0" step="any" value="${esc(v.amt)}" data-vamt="${v.id}"></div>
+      <div class="trow"><span style="flex:1"></span><div class="seg">${[['qty','個'],['min','個/分'],['sec','個/秒']].map(([k,l])=>`<button data-vu="${k}" class="${v.unit===k?'on':''}">${l}</button>`).join('')}</div></div>
+      <div class="note">材料をタップすると、同じ列に内訳のタブが開きます。</div></div>`;
+    return renderViewOut(v);
+  }
+  const toDisp=x=>x*v.k;
+  document.getElementById('form').innerHTML=`<div class="box"><div class="vhead"><div><h2 style="margin:0 0 4px">${esc(nm(v.item))}</h2>
+      <div class="big" style="font-size:22px">${fmt(v.rate?toDisp(v.amt):v.amt)} ${v.rate?'個'+v.unitLbl:(I[v.item].fluid?'':'個')}</div>
+      <div class="note">${esc(v.fromLbl)}から開いた内訳です。材料をタップするとさらに新しいタブで開きます。</div></div>
+      <button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div></div>`;
+  renderViewOut(v);
+}
+function renderViewOut(v){
+  v=v||curView(); if(!v) return;
+  if(v.kind==='calc'){
+    const U=vUnit(v.unit), toDisp=x=>x*U.k; CUR={rate:U.rate,k:U.k,unitLbl:U.unitLbl,stop:[]};
+    const a=+v.amt||0; if(a<=0){document.getElementById('out').innerHTML='<div class="note">数量を入力してください</div>';return;}
+    const res=solve([{item:v.item,amt:U.rate?a/U.k:a}],!U.rate&&S.intCraft);
+    document.getElementById('out').innerHTML=bodyHTML(res,U.rate,toDisp,U.unitLbl)+notes(); return;
+  }
   STOP=new Set(v.stop);
   try{
     CUR={rate:v.rate,k:v.k,unitLbl:v.unitLbl,stop:v.stop};
     const toDisp=x=>x*v.k, res=solve([{item:v.item,amt:v.amt}],false);
-    document.getElementById('form').innerHTML=`<div class="box"><div class="vhead"><div><h2 style="margin:0 0 4px">${esc(nm(v.item))}</h2>
-      <div class="big" style="font-size:22px">${fmt(v.rate?toDisp(v.amt):v.amt)} ${v.rate?'個'+v.unitLbl:(I[v.item].fluid?'':'個')}</div>
-      <div class="note">${esc(v.fromLbl)}から開いた内訳です。材料をタップするとさらに新しいタブで開きます。</div></div>
-      <button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div></div>`;
     document.getElementById('out').innerHTML=bodyHTML(res,v.rate,toDisp,v.unitLbl)+notes();
   } finally { STOP=new Set(); }
 }
@@ -487,7 +511,7 @@ function render(){
 }
 function renderOut(){
   renderTabs();
-  if(String(S.tab).startsWith('v:')) return renderView();
+  if(String(S.tab).startsWith('v:')) return renderViewOut();
   if(S.tab==='calc') renderCalcOut();
   else if(S.tab==='rev') renderRevOut();
   else document.getElementById('out').innerHTML='';
@@ -717,6 +741,11 @@ function init(){
       const v={id:++VSEQ,item:t.dataset.drill,amt:+t.dataset.amt,rate:CUR.rate,k:CUR.k,unitLbl:CUR.unitLbl,stop:CUR.stop.slice(),from:S.tab,fromLbl};
       if(!String(S.tab).startsWith('v:')) S.from=S.tab;
       S.views.push(v); S.tab='v:'+v.id; save(); render(); window.scrollTo(0,0); return;}
+    if(t.id==='vnew'){
+      const v={id:++VSEQ,kind:'calc',item:'electronic-circuit',amt:60,unit:(S.unit||'min')};
+      if(!String(S.tab).startsWith('v:')) S.from=S.tab==='set'?'calc':S.tab;
+      v.from=S.tab; S.views.push(v); S.tab='v:'+v.id; save(); render(); window.scrollTo(0,0); return;}
+    if(t.dataset.vu){const v=curView(); if(v){v.unit=t.dataset.vu; save(); render();} return;}
     if(t.dataset.close){
       const id=+t.dataset.close, i=S.views.findIndex(x=>x.id===id); if(i<0) return;
       const v=S.views[i]; S.views.splice(i,1);
@@ -732,6 +761,7 @@ function init(){
     const t=ev.target;
     if(t.dataset.ti!==undefined||t.dataset.mi!==undefined||t.id==='ritem') S.drill=[];
     if(t.dataset.ti!==undefined){S.targets[+t.dataset.ti].item=t.value; save(); renderOut(); return;}
+    if(t.dataset.vitem){const v=curView(); if(v){v.item=t.value; save(); renderOut();} return;}
     if(t.dataset.mi!==undefined){S.rev.mats[+t.dataset.mi].item=t.value; save(); renderOut(); return;}
     if(t.id==='ritem'){S.rev.item=t.value; save(); renderOut(); return;}
     if(t.id==='chs'){S.choice.solid=t.value; save(); return;}
@@ -759,6 +789,7 @@ function init(){
     if(t.dataset.ta!==undefined||t.dataset.ma!==undefined) S.drill=[];
     if(t.dataset.ta!==undefined){S.targets[+t.dataset.ta].amt=t.value; save(); renderOut();}
     if(t.dataset.ma!==undefined){S.rev.mats[+t.dataset.ma].amt=t.value; save(); renderOut();}
+    if(t.dataset.vamt){const v=curView(); if(v){v.amt=t.value; save(); renderOut();}}
   });
   render();
 }
