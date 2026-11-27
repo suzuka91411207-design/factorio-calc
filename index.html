@@ -240,23 +240,28 @@ const MODS = {
   e1:{n:'効率1',energy:-.3}, e2:{n:'効率2',energy:-.4}, e3:{n:'効率3',energy:-.5},
 };
 const BEACON_EFF = 1.5, BEACON_KW = 480, BEACON_SLOTS = 2;
+// 搬入（青ベルト → 機械）。インサータ1往復の時間（Wiki: ロング48tick、バルク24tick）
+// ベルトから1個ずつ拾う時間は、青ベルト・両レーンの実測値から逆算した約0.064秒/個
+const BLUE_BELT=45, T_PICK=0.064;
+const INS={bulk:{n:'バルクインサータ',arm:0.4,maxHand:12},long:{n:'ロングインサータ',arm:0.8,maxHand:3}};
+function insRate(type){ const hand=Math.max(1,Math.min(INS[type].maxHand, +(S.hand&&S.hand[type])||INS[type].maxHand)); return 1/(T_PICK + INS[type].arm/hand); }
 const OIL = new Set(['heavy-oil','light-oil','petroleum-gas']);
 
 /* ===================== 状態 ===================== */
 const KEY='factorio-calc-v1';
 const SET_VER=2;
 // 既定：本体は生産力3で全枠、ビーコン8基に速度3×2
-function defCfg(m){return {m,s:['p3','p3','p3','p3'],bn:8,b:['s3','s3']};}
+function defCfg(m){return {m,s:['p3','p3','p3','p3'],bn:8,b:['s3','s3'],ins:'bulk',insN:1};}
 function defaultState(){return {
-  ver:SET_VER, tab:'calc', unit:'min', intCraft:true,
+  ver:SET_VER, tab:'calc', unit:'min', intCraft:true, insOn:true, hand:{bulk:12,long:3},
   targets:[{item:'electronic-circuit',amt:60}],
-  rev:{item:'electronic-circuit',mats:[{item:'iron-plate',amt:1000},{item:'copper-plate',amt:1000}]},
+  rev:{item:'electronic-circuit',unit:'qty',mats:[{item:'iron-plate',amt:1000},{item:'copper-plate',amt:1000}]},
   def:{assembler:defCfg('asm3'),furnace:defCfg('efurn'),chem:defCfg('chem'),refinery:defCfg('refi'),centrifuge:defCfg('cent'),silo:defCfg('silo')},
   ov:{}, open:{}, drill:[],
   choice:{solid:'solid-fuel-from-light-oil',u235:'kovarex-enrichment-process'}
 };}
 let S = defaultState();
-function applySaved(j){ if(j&&j.def){ if((j.ver||1)<SET_VER){ j.def=defaultState().def; j.ov={}; j.ver=SET_VER; } S=Object.assign(defaultState(),j); S.def=Object.assign(defaultState().def,j.def); S.open={}; S.drill=[]; return true;} return false; }
+function applySaved(j){ if(j&&j.def){ if((j.ver||1)<SET_VER){ j.def=defaultState().def; j.ov={}; j.ver=SET_VER; } S=Object.assign(defaultState(),j); S.def=Object.assign(defaultState().def,j.def); S.hand=Object.assign({bulk:12,long:3},j.hand||{}); if(j.insOn===undefined) S.insOn=true; S.open={}; S.drill=[]; return true;} return false; }
 try{applySaved(JSON.parse(localStorage.getItem(KEY)));}catch(e){}
 function snapshot(){const c=Object.assign({},S); delete c.open; delete c.drill; return JSON.stringify(c);}
 function save(){const s=snapshot(); try{localStorage.setItem(KEY,s);}catch(e){} cloudSave(s);}
@@ -289,6 +294,18 @@ function effects(rid){
   return {m,M,speed:sp,prod:Math.min(3,pr),energy:en,sMul:Math.max(0.2,1+sp),eMul:Math.max(0.2,1+en),blocked,fixed,bn};
 }
 let STOP=new Set();
+// 1台あたりの最大クラフト速度（機械の速さと搬入インサータの限界のうち小さいほう）
+function machineLimit(rid){
+  const r=R[rid], e=effects(rid), c=cfgOf(rid);
+  const mach=e.M.speed*e.sMul/r.t;
+  let best=mach, by=null, per=[];
+  if(S.insOn && c){
+    const type=c.ins||'bulk', N=+c.insN||1, ir=insRate(type)*N;
+    for(const g in r.in){ if(I[g].fluid) continue; const lim=ir/r.in[g]; per.push({g,lim}); if(lim<best){best=lim; by=g;} }
+  }
+  return {mach, max:best, by, per};
+}
+function machinesFor(rid,runs){ return runs/machineLimit(rid).max; }
 function recipeFor(item){
   const it=I[item]; if(!it||it.raw||STOP.has(item)) return null;
   if(OIL.has(item)) return 'OIL';
@@ -383,6 +400,7 @@ function cfgSummary(rid,e){
   let s=`${e.M.n}`+(S.ov[rid]?'<span class="tag">個別</span>':'');
   s+=' ・ モジュール: '+(mods.length?mods.join(', '):'なし');
   if(e.bn>0) s+=` ・ ビーコン${e.bn}基[${bm.join(', ')||'空'}]`;
+  if(S.insOn) s+=` ・ 搬入: ${INS[c.ins||'bulk'].n}×${c.insN||1}`;
   return s;
 }
 // 設定エディタ  key: "g:assembler" or "r:recipeId"
@@ -400,6 +418,8 @@ function editor(key){
     for(let i=0;i<M.slots;i++) h+=`<select data-f="s${i}">${modOpts(c.s[i]||'none',allowProd)}</select>`;
     h+=`<button class="btn sm" data-fill="${key}">1枠目で全部埋める</button></div>`;
   } else h+=`<div class="f note">この機械にはモジュールを挿せません</div>`;
+  h+=`<div class="f"><label>搬入</label><select data-f="ins">${Object.keys(INS).map(k=>`<option value="${k}"${(c.ins||'bulk')===k?' selected':''}>${INS[k].n}</option>`).join('')}</select>
+    <select data-f="insN">${[1,2,3,4,5,6].map(i=>`<option value="${i}"${i==(c.insN||1)?' selected':''}>材料1種につき${i}本</option>`).join('')}</select></div>`;
   h+=`<div class="f"><label>ビーコン数</label><select data-f="bn">${Array.from({length:17},(_,i)=>`<option value="${i}"${i==c.bn?' selected':''}>${i}基</option>`).join('')}</select></div>`;
   if(c.bn>0){
     h+=`<div class="f"><label>ビーコン中身</label>`;
@@ -447,7 +467,7 @@ function rowCard(rid,res,rate,toDisp,unitLbl){
   if(r.cat==='launch'){
     right = rate? `<span class="mc">${fmt(toDisp(n))}<small> 回${unitLbl.replace('個','')}</small></span>` : `<span class="mc">${fmt(n)}<small> 回</small></span>`;
   } else if(rate){
-    const mc=n*r.t/(e.M.speed*e.sMul);
+    const mc=machinesFor(rid,n);
     right=`<span class="mc">${fmt(mc)}<small> 台 → ${Math.ceil(mc-1e-9)}台</small></span>`;
   }
   h+=`<div class="r1"><b>${esc(rname(rid))}</b>${right}</div>`;
@@ -462,9 +482,17 @@ function rowCard(rid,res,rate,toDisp,unitLbl){
   if(e.M){
     h+=`<div class="sub">${cfgSummary(rid,e)}</div>`;
     h+=`<div class="sub">速度 ${pct(e.sMul-1)} ・ 生産力 ${pct(e.prod)} ・ 電力 ${pct(e.eMul-1)}`;
-    if(rate){const mc=n*r.t/(e.M.speed*e.sMul); h+=` ・ 消費電力≈${fmt(Math.ceil(mc-1e-9)*e.M.kw*(e.M.burner?1:e.eMul)/1000)}MW${e.M.burner?'（燃料）':''}`;}
-    else { h+=` ・ 1台なら ${dur(n*r.t/(e.M.speed*e.sMul))}`; }
+    if(rate){const mc=machinesFor(rid,n); h+=` ・ 消費電力≈${fmt(Math.ceil(mc-1e-9)*e.M.kw*(e.M.burner?1:e.eMul)/1000)}MW${e.M.burner?'（燃料）':''}`;}
+    else { h+=` ・ 1台なら ${dur(machinesFor(rid,n))}`; }
     h+='</div>';
+    if(S.insOn && r.cat!=='launch'){
+      const L=machineLimit(rid), outAmt=Object.values(r.out)[0]*(1+e.prod), outName=nm(Object.keys(r.out)[0]);
+      const per=L.per.map(p=>`${esc(nm(p.g))} ${fmt(p.lim*r.in[p.g])}個/秒`).join('、');
+      h+=`<div class="sub">1台の上限: 機械 ${fmt(L.mach*outAmt)}個/秒${per?` ・ 搬入可能量 ${per}`:''}</div>`;
+      if(L.by){ const ideal=rate? n/L.mach : 0;
+        h+=`<div class="sub warn">⚠ 搬入（${esc(nm(L.by))}）がボトルネック：1台 ${fmt(L.max*outAmt)}個/秒 に制限${rate?`（機械だけなら ${fmt(ideal)}台）`:''}</div>`; }
+      if(rate){ const belts=Object.keys(r.in).filter(g=>!I[g].fluid).map(g=>`${esc(nm(g))} ${fmt(n*r.in[g]/BLUE_BELT)}本`); if(belts.length) h+=`<div class="sub">青ベルト: ${belts.join('、')}</div>`; }
+    }
     if(e.blocked) h+=`<div class="sub">※ 生産力モジュール不可のレシピのため、生産力モジュール分は除外して計算</div>`;
     if(e.fixed) h+=`<div class="sub warn">⚠ 流体を使うため組立機1は不可。${e.M.n}で計算</div>`;
     h+=`<div style="margin-top:6px"><button class="btn sm" data-open="${rid}">${S.open[rid]?'▲ 閉じる':'⚙ モジュール・ビーコン'}</button></div>`;
@@ -486,9 +514,15 @@ function interBox(res,rate,toDisp,unitLbl,skip){
 }
 function machineSummary(res){
   const tot={}; let mw=0;
-  for(const rid of res.rorder){const r=R[rid]; if(r.cat==='launch')continue; const e=effects(rid); const mc=Math.ceil(res.runs[rid]*r.t/(e.M.speed*e.sMul)-1e-9); tot[e.M.n]=(tot[e.M.n]||0)+mc; if(!e.M.burner) mw+=mc*e.M.kw*e.eMul/1000;}
+  for(const rid of res.rorder){const r=R[rid]; if(r.cat==='launch')continue; const e=effects(rid); const mc=Math.ceil(machinesFor(rid,res.runs[rid])-1e-9); tot[e.M.n]=(tot[e.M.n]||0)+mc; if(!e.M.burner) mw+=mc*e.M.kw*e.eMul/1000;}
   const k=Object.keys(tot); if(!k.length) return '';
-  return `<div class="box"><h2>機械の合計（各工程で切り上げ）</h2><div class="raw">`+k.map(n=>`<div>${n}</div><div>${tot[n]}台</div>`).join('')+`<div>機械の消費電力（ビーコン別）</div><div>≈${fmt(mw)}MW</div></div><div class="note" style="margin-top:6px">ビーコン1基は480kW。ビーコンは複数の機械で共有されるため台数は合計していません。</div></div>`;
+  return `<div class="box"><h2>機械の合計（各工程で切り上げ${S.insOn?'・搬入制限込み':''}）</h2><div class="raw">`+k.map(n=>`<div>${n}</div><div>${tot[n]}台</div>`).join('')+`<div>機械の消費電力（ビーコン別）</div><div>≈${fmt(mw)}MW</div></div><div class="note" style="margin-top:6px">ビーコン1基は480kW。ビーコンは複数の機械で共有されるため台数は合計していません。</div></div>`;
+}
+function bodyHTML(res,rate,toDisp,unitLbl){
+  let h=rawBox(res.demand,rate,toDisp,unitLbl);
+  if(rate) h+=machineSummary(res);
+  h+=`<div class="box" style="padding-bottom:4px"><h2>工程ごと${rate?'の必要台数':'のクラフト回数'}</h2>`+res.rorder.map(rid=>rowCard(rid,res,rate,toDisp,unitLbl)).join('')+'</div>';
+  return h+interBox(res,rate,toDisp,unitLbl);
 }
 function renderCalcOut(){
   const rate=S.unit!=='qty', k=S.unit==='min'?60:1, unitLbl=S.unit==='min'?'/分':'/秒';
@@ -524,9 +558,12 @@ function renderRevForm(){
   v.mats.forEach((m,i)=>{
     h+=`<div class="trow"><select class="item" data-mi="${i}">${itemOptions(m.item,false)}</select>
       <input type="number" inputmode="decimal" min="0" step="any" value="${esc(m.amt)}" data-ma="${i}">
+      ${(v.unit||'qty')!=='qty'?`<button class="btn sm" data-belt="${i}">青ベルト1本</button>`:''}
       ${v.mats.length>1?`<button class="btn sm" data-mdel="${i}">✕</button>`:''}</div>`;
   });
-  h+=`<div class="trow"><button class="btn sm" id="madd">＋ 材料を追加</button></div>
+  h+=`<div class="trow"><button class="btn sm" id="madd">＋ 材料を追加</button><span style="flex:1"></span>
+    <div class="seg">${[['qty','個'],['min','個/分'],['sec','個/秒']].map(([k,l])=>`<button data-ru="${k}" class="${(v.unit||'qty')===k?'on':''}">${l}</button>`).join('')}</div></div>
+  <div class="note">「個/分・個/秒」にすると「その量を流し続けたら毎分何個作れて、何台必要か」を計算します（青ベルト1本＝毎秒45個）。</div>
   <div class="note">材料を複数入れると、一番先に足りなくなる材料で個数が決まります。モジュール設定（生産力）も反映されます。</div></div>`;
   document.getElementById('form').innerHTML=h;
 }
@@ -536,11 +573,20 @@ function renderRevOut(){
   try{ renderRevInner(v,it); } finally { STOP=new Set(); }
 }
 function renderRevInner(v,it){
+  const ru=v.unit||'qty', rate=ru!=='qty', k=ru==='min'?60:1, unitLbl=ru==='min'?'/分':'/秒', toDisp=x=>x*k;
   if(S.drill.length){
     const d=S.drill[S.drill.length-1], res=solve([{item:d.item,amt:d.amt}],false);
-    let h=crumbs(false,null,'','逆算の結果')+rawBox(res.demand,false,null,'','必要な材料・原料')+interBox(res,false,null,'');
-    h+=`<div class="box" style="padding-bottom:4px"><h2>工程ごとのクラフト回数</h2>`+res.rorder.map(rid=>rowCard(rid,res,false,null,'')).join('')+'</div>';
-    document.getElementById('out').innerHTML=h; return;
+    document.getElementById('out').innerHTML=crumbs(rate,toDisp,unitLbl,'逆算の結果')+bodyHTML(res,rate,toDisp,unitLbl)+notes(); return;
+  }
+  if(rate){
+    const unit=solve([{item:it,amt:1}],false); let limit=Infinity, lim=null; const rows=[];
+    for(const m of v.mats){ if(m.item===it) continue; const need=unit.demand[m.item]||0; const sup=(+m.amt||0)/k; const can=need>1e-12?sup/need:Infinity; rows.push({m,need,can}); if(can<limit){limit=can;lim=m.item;} }
+    if(!isFinite(limit)){ document.getElementById('out').innerHTML=`<div class="box"><div class="note">入力した材料は「${esc(nm(it))}」の製造に使われません。</div></div>`; return; }
+    const res=solve([{item:it,amt:limit}],false);
+    let h=`<div class="box"><h2>生産できる速度</h2><div class="big">${fmt(toDisp(limit))} 個${unitLbl}</div>
+      <div class="note">制限している材料: <b>${esc(nm(lim))}</b>（＝${esc(nm(lim))}を使い切る速度）。必要台数は搬入インサータの限界を含めて計算しています。</div></div>`;
+    h+=`<div class="box"><h2>材料の使用状況</h2><div class="raw">`+rows.map(x=>`<div>${esc(nm(x.m.item))}</div><div>${isFinite(x.can)?fmt(toDisp(x.need*limit))+' / '+fmt(+x.m.amt||0)+unitLbl:'未使用'}</div>`).join('')+`</div></div>`;
+    document.getElementById('out').innerHTML=h+bodyHTML(res,true,toDisp,unitLbl)+notes(); return;
   }
   const unit=solve([{item:it,amt:1}],false);
   let limit=Infinity, lim=null, rows=[];
@@ -580,6 +626,13 @@ function renderSettings(){
    <div class="trow"><label style="min-width:80px">ウラン235</label><select id="chu">${[['kovarex-enrichment-process','ケバレック濃縮'],['uranium-processing-235','ウラン処理のみ']].map(([r,l])=>`<option value="${r}"${S.choice.u235===r?' selected':''}>${l}</option>`).join('')}</select></div>
    <div class="trow"><label><input type="checkbox" id="intc" ${S.intCraft?'checked':''}> 数量計算でクラフト回数を整数に切り上げる</label></div>
   </div>
+  <div class="box"><h2>搬入（青ベルト → インサータ → 機械）</h2>
+   <div class="trow"><label><input type="checkbox" id="inson" ${S.insOn?'checked':''}> 搬入インサータの限界を台数計算に含める</label></div>
+   <div class="trow"><label style="min-width:150px">バルクの手持ち数</label><select id="hb">${Array.from({length:11},(_,i)=>i+2).map(n=>`<option value="${n}"${n==S.hand.bulk?' selected':''}>${n}個</option>`).join('')}</select></div>
+   <div class="trow"><label style="min-width:150px">ロングの手持ち数</label><select id="hl">${[1,2,3].map(n=>`<option value="${n}"${n==S.hand.long?' selected':''}>${n}個</option>`).join('')}</select></div>
+   <div class="note">インサータ容量の研究で増えます（すべて研究済み：バルク12個・ロング3個）。<br>
+   青ベルトからの搬入速度の目安（1本あたり）: バルク ${fmt(insRate('bulk'))}個/秒 ・ ロング ${fmt(insRate('long'))}個/秒<br>
+   ※ Wikiの実測値から求めた推定値で、ベルトの混み具合や向きによって±15%ほど変わります。流体はパイプで供給する前提で除外しています。</div></div>
   <div class="box"><h2>個別設定</h2><div class="note">個別設定中の工程: ${Object.keys(S.ov).length? Object.keys(S.ov).map(r=>esc(rname(r))).join('、'):'なし'}</div>
    <div class="trow" style="margin-top:8px"><button class="btn sm" id="clrov">個別設定をすべて解除</button><button class="btn sm" id="resetall">全設定を初期化</button></div></div>
   <div class="box"><h2>計算ルール（2.0）</h2><div class="note">
@@ -605,6 +658,8 @@ function init(){
     if(t.dataset.tab||t.dataset.u||t.id==='tadd'||t.dataset.tdel!==undefined||t.id==='madd'||t.dataset.mdel!==undefined) S.drill=[];
     if(t.dataset.tab){S.tab=t.dataset.tab; save(); render(); window.scrollTo(0,0); return;}
     if(t.dataset.u){S.unit=t.dataset.u; save(); render(); return;}
+    if(t.dataset.ru){S.rev.unit=t.dataset.ru; S.drill=[]; save(); render(); return;}
+    if(t.dataset.belt!==undefined){S.rev.mats[+t.dataset.belt].amt=(S.rev.unit==='min'?BLUE_BELT*60:BLUE_BELT); S.drill=[]; save(); render(); return;}
     if(t.id==='tadd'){S.targets.push({item:'automation-science-pack',amt:60}); save(); render(); return;}
     if(t.dataset.tdel!==undefined){S.targets.splice(+t.dataset.tdel,1); save(); render(); return;}
     if(t.id==='madd'){S.rev.mats.push({item:'iron-plate',amt:100}); save(); render(); return;}
@@ -625,12 +680,17 @@ function init(){
     if(t.id==='chs'){S.choice.solid=t.value; save(); return;}
     if(t.id==='chu'){S.choice.u235=t.value; save(); return;}
     if(t.id==='intc'){S.intCraft=t.checked; save(); return;}
+    if(t.id==='inson'){S.insOn=t.checked; save(); render(); return;}
+    if(t.id==='hb'){S.hand.bulk=+t.value; save(); render(); return;}
+    if(t.id==='hl'){S.hand.long=+t.value; save(); render(); return;}
     if(t.dataset.only){const id=t.dataset.only; if(t.checked) S.ov[id]=JSON.parse(JSON.stringify(cfgOf(id))); else delete S.ov[id]; save(); renderOut(); return;}
     const ed=t.closest('.ed');
     if(ed && t.dataset.f){
       const key=ed.dataset.key, c=cfgForKey(key), f=t.dataset.f;
       if(f==='m') c.m=t.value;
       else if(f==='bn') c.bn=+t.value;
+      else if(f==='ins') c.ins=t.value;
+      else if(f==='insN') c.insN=+t.value;
       else if(f[0]==='s') c.s[+f.slice(1)]=t.value;
       else if(f[0]==='b') c.b[+f.slice(1)]=t.value;
       save();
