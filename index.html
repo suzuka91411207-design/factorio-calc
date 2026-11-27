@@ -54,6 +54,7 @@ input[type=number]{width:100px}
 .vtabs:empty{display:none}
 .vt{flex:none;display:flex;align-items:center;background:#262626;border:1px solid var(--line);border-radius:8px;max-width:220px}
 .vt.on{border-color:var(--acc);background:#3a2f1a}
+.vt.root .lb{padding-right:10px}
 .vt .lb{background:none;border:none;color:var(--txt);font-size:13px;padding:7px 4px 7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
 .vt.on .lb{color:var(--acc);font-weight:bold}
 .vt .x{background:none;border:none;color:var(--sub);font-size:15px;padding:7px 10px 7px 6px;min-width:32px}
@@ -454,7 +455,13 @@ let CUR={rate:false,k:1,unitLbl:'',stop:[]};
 function vLabel(v){ return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(v.rate?v.amt*v.k:v.amt)+(v.rate?v.unitLbl:'個'); }
 function renderTabs(){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===S.tab));
-  document.getElementById('vtabs').innerHTML=S.views.map(v=>`<div class="vt${S.tab==='v:'+v.id?' on':''}"><button class="lb" data-tab="v:${v.id}">${esc(vLabel(v))}</button><button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div>`).join('');
+  const root=(S.from==='rev')?'rev':'calc';
+  let rootLbl;
+  if(root==='rev') rootLbl='逆算：'+nm(S.rev.item).replace(/（.*?）/g,'');
+  else { const ts=S.targets.filter(t=>+t.amt>0), u=S.unit==='qty'?'個':(S.unit==='min'?'/分':'/秒');
+    rootLbl=ts.length? nm(ts[0].item).replace(/（.*?）/g,'')+' '+fmt(+ts[0].amt)+u+(ts.length>1?` ほか${ts.length-1}件`:'') : '必要量・台数'; }
+  const rootTab=S.views.length?`<div class="vt root${S.tab===root?' on':''}"><button class="lb" data-tab="${root}">${esc(rootLbl)}</button></div>`:'';
+  document.getElementById('vtabs').innerHTML=rootTab+S.views.map(v=>`<div class="vt${S.tab==='v:'+v.id?' on':''}"><button class="lb" data-tab="v:${v.id}">${esc(vLabel(v))}</button><button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div>`).join('');
   const on=document.querySelector('.vt.on'); if(on) on.scrollIntoView({inline:'nearest',block:'nearest'});
 }
 function renderView(){
@@ -479,6 +486,7 @@ function render(){
   renderOut();
 }
 function renderOut(){
+  renderTabs();
   if(String(S.tab).startsWith('v:')) return renderView();
   if(S.tab==='calc') renderCalcOut();
   else if(S.tab==='rev') renderRevOut();
