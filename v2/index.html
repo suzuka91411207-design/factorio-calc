@@ -435,7 +435,12 @@ document.addEventListener('click',e=>{
     S.tabs.push({id,mode:'need',items:[{item:d.open,amt:+(u.rate?a*u.k:a).toPrecision(6)}],unit:t.unit,have:[{item:'',amt:''}],target:'',stop:CTX.stop,src:tabLabel(t)});
     S.active=id; save(); redraw(); scrollTo(0,0);}
   else if(d.mode){t.mode=d.mode; save(); redraw();}
-  else if(d.unit){t.unit=d.unit; save(); redraw();}
+  else if(d.unit){
+    // 個/分 ⇔ 個/秒 は速度を保ったまま数値を換算（「個」との切替は数値そのまま）
+    const from=U(t.unit), to=U(d.unit);
+    if(from.rate&&to.rate&&from.k!==to.k){const f=to.k/from.k, cv=v=>v===''||v==null||isNaN(+v)?v:+(+v*f).toPrecision(6);
+      t.items.forEach(x=>x.amt=cv(x.amt)); t.have.forEach(x=>x.amt=cv(x.amt));}
+    t.unit=d.unit; save(); redraw();}
   else if('addrow' in d){t.items.push({item:'',amt:''}); save(); drawInputs();}
   else if(d.del){t.items.splice(+d.del,1); save(); drawInputs(); refresh();}
   else if('haddrow' in d){t.have.push({item:'',amt:''}); save(); drawInputs();}
