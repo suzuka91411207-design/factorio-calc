@@ -455,7 +455,7 @@ function editor(key){
 let CUR={rate:false,k:1,unitLbl:'',stop:[]};
 function vUnit(u){ return {rate:u!=='qty', k:u==='min'?60:1, unitLbl:u==='min'?'/分':(u==='sec'?'/秒':'')}; }
 function vLabel(v){
-  if(v.kind==='calc'){ const U=vUnit(v.unit); return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(+v.amt||0)+(U.rate?U.unitLbl:'個'); }
+  if(v.kind==='calc'){ if(!v.item) return '新しいタブ'; const U=vUnit(v.unit); return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(+v.amt||0)+(U.rate?U.unitLbl:'個'); }
   return nm(v.item).replace(/（.*?）/g,'')+' '+fmt(v.rate?v.amt*v.k:v.amt)+(v.rate?v.unitLbl:'個'); }
 function renderTabs(){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===S.tab));
@@ -473,8 +473,8 @@ function renderView(){
   const v=curView(); if(!v){S.tab='calc'; return render();}
   if(v.kind==='calc'){
     document.getElementById('form').innerHTML=`<div class="box"><div class="vhead"><h2 style="margin:0">新しい計算</h2><button class="x" data-close="${v.id}" aria-label="閉じる">✕</button></div>
-      <div class="trow" style="margin-top:8px"><select class="item" data-vitem="${v.id}">${itemOptions(v.item,true)}</select>
-      <input type="number" inputmode="decimal" min="0" step="any" value="${esc(v.amt)}" data-vamt="${v.id}"></div>
+      <div class="trow" style="margin-top:8px"><select class="item" data-vitem="${v.id}">${v.item?'':'<option value="" selected disabled>アイテムを選択</option>'}${itemOptions(v.item,true)}</select>
+      <input type="number" inputmode="decimal" min="0" step="any" value="${esc(v.amt)}" placeholder="数量" data-vamt="${v.id}"></div>
       <div class="trow"><span style="flex:1"></span><div class="seg">${[['qty','個'],['min','個/分'],['sec','個/秒']].map(([k,l])=>`<button data-vu="${k}" class="${v.unit===k?'on':''}">${l}</button>`).join('')}</div></div>
       <div class="note">材料をタップすると、同じ列に内訳のタブが開きます。</div></div>`;
     return renderViewOut(v);
@@ -490,7 +490,7 @@ function renderViewOut(v){
   v=v||curView(); if(!v) return;
   if(v.kind==='calc'){
     const U=vUnit(v.unit), toDisp=x=>x*U.k; CUR={rate:U.rate,k:U.k,unitLbl:U.unitLbl,stop:[]};
-    const a=+v.amt||0; if(a<=0){document.getElementById('out').innerHTML='<div class="note">数量を入力してください</div>';return;}
+    const a=+v.amt||0; if(!v.item||a<=0){document.getElementById('out').innerHTML=`<div class="note">${v.item?'数量を入力してください':'アイテムと数量を入力してください'}</div>`;return;}
     const res=solve([{item:v.item,amt:U.rate?a/U.k:a}],!U.rate&&S.intCraft);
     document.getElementById('out').innerHTML=bodyHTML(res,U.rate,toDisp,U.unitLbl)+notes(); return;
   }
@@ -742,7 +742,7 @@ function init(){
       if(!String(S.tab).startsWith('v:')) S.from=S.tab;
       S.views.push(v); S.tab='v:'+v.id; save(); render(); window.scrollTo(0,0); return;}
     if(t.id==='vnew'){
-      const v={id:++VSEQ,kind:'calc',item:'electronic-circuit',amt:60,unit:(S.unit||'min')};
+      const v={id:++VSEQ,kind:'calc',item:'',amt:'',unit:(S.unit||'min')};
       if(!String(S.tab).startsWith('v:')) S.from=S.tab==='set'?'calc':S.tab;
       v.from=S.tab; S.views.push(v); S.tab='v:'+v.id; save(); render(); window.scrollTo(0,0); return;}
     if(t.dataset.vu){const v=curView(); if(v){v.unit=t.dataset.vu; save(); render();} return;}
